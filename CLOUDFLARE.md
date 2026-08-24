@@ -10,9 +10,16 @@
 - Instance type: `standard-1`
 - Máximo de instâncias: `1`
 - Versão inicial: `d5ddbcce-2e79-40c8-b119-43908714b101`
+- Versão ativa validada em 23/08/2026: `ce6a4700-ac5c-4577-bdb1-d9b4bda2dad2`
 
 Validação da publicação realizada com sucesso em `/`, `/api/health` e
 `/api/analysis/engines`.
+
+Em 23/08/2026, o Wrangler confirmou o container como `active`, com uma instância
+viva e 100% do tráfego direcionado à versão ativa. O domínio personalizado chega
+corretamente à camada de segurança da Cloudflare. A proteção anti-bot apresentou
+um desafio também em `/api/health`; recomenda-se criar uma exceção específica
+para esse endpoint antes de usá-lo em monitoramento automatizado.
 
 ## Autenticação MVP
 
