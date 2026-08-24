@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Modelos de fluxo | EXPERT CODE FLOW</title><link rel="stylesheet" href="/static/styles.css"><link rel="stylesheet" href="/static/layout.css"><link rel="stylesheet" href="/static/flow.css"></head>
+<body><aside class="sidebar" aria-label="Navegação principal">
+  <a class="sidebar-brand" href="/"><span>ECF</span><strong>EXPERT<br>CODE FLOW</strong></a>
+  <nav>
+    <a class="nav-item" href="/"><span class="nav-icon">⌘</span><span><b>Code Flow</b><small>Sistema principal</small></span></a>
+    <a class="nav-item active" href="/fluxos"><span class="nav-icon">⇄</span><span><b>Fluxos</b><small>Modelos avaliados</small></span></a>
+    <a class="nav-item" href="/camada-semantica"><span class="nav-icon">◇</span><span><b>Camada Semântica</b><small>Contexto funcional</small></span></a>
+    <a class="nav-item" href="/dimensoes-analise"><span class="nav-icon">☷</span><span><b>Dimensões de Análise</b><small>Critérios de maturidade</small></span></a>
+    <a class="nav-item" href="/avaliacao-maturidade"><span class="nav-icon">◎</span><span><b>Maturidade</b><small>Último processamento</small></span></a>
+  </nav>
+  <footer><span class="status-dot"></span> Analisador local <b>v0.1</b></footer>
+</aside><main class="models-page">
+  <header><span class="eyebrow">Referência arquitetural</span><h1>MODELOS DE <em>FLUXO</em></h1><p>Entenda os padrões reconhecidos automaticamente durante a análise.</p></header>
+  <section class="panel architecture-catalog" id="flow-models"><div class="section-head"><div><span class="eyebrow">Padrões reconhecidos</span><h2>Modelos de fluxo</h2></div><span class="model-count">2 modelos</span></div>
+    <p class="catalog-intro">O analisador compara estrutura de pacotes, contratos e dependências para identificar automaticamente o padrão predominante.</p>
+    <div class="model-grid">
+      <article class="model-card hexagonal-card" id="hexagonal-model"><div class="model-card-head"><span class="model-symbol">⬡</span><div><small>Ports &amp; Adapters</small><h3>Hexagonal</h3></div><span class="model-tag">HEX</span></div>
+        <div class="model-flow"><span>Controller</span><i>→</i><span>Port IN</span><i>→</i><span>Use Case</span><i>→</i><span>Port OUT</span><i>→</i><span>Adapter</span><i>→</i><span>Database</span></div>
+        <p>O domínio e os casos de uso ficam protegidos por portas. Adaptadores conectam HTTP, persistência e serviços externos.</p>
+        <ul><li><code>application/port/in</code> e <code>port/out</code></li><li>Use Cases e Ports implementados por Services e Adapters</li><li>Dependências apontam para o núcleo da aplicação</li></ul>
+      </article>
+      <article class="model-card layered-card" id="layered-model"><div class="model-card-head"><span class="model-symbol">▤</span><div><small>Spring tradicional</small><h3>Camadas Spring</h3></div><span class="model-tag">LAY</span></div>
+        <div class="model-flow"><span>Controller</span><i>→</i><span>Service</span><i>→</i><span>Repository</span><i>→</i><span>Database</span></div>
+        <p>As responsabilidades são organizadas em camadas técnicas, com chamadas descendentes do controller até a persistência.</p>
+        <ul><li>Pacotes <code>controller</code>, <code>service</code> e <code>repository</code></li><li>Repositories Spring Data e entidades persistentes</li><li>Fluxo direto entre as camadas técnicas</li></ul>
+      </article>
+    </div>
+  </section>
+</main><script src="/static/session-timeout.js"></script><script>const links=[...document.querySelectorAll('[data-model-link]')];function activate(){const id=location.hash.slice(1)||'hexagonal-model';links.forEach(link=>link.classList.toggle('active',link.dataset.modelLink===id));}addEventListener('hashchange',activate);activate();</script></body></html>

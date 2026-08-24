@@ -1,0 +1,17 @@
+.git
+.github
+.idea
+.vscode
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.pytest-*
+.cache
+.uploads
+tmp
+output
+*.log
+spoon-analyzer/target
+node_modules
+.wrangler

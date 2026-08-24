@@ -1,0 +1,20 @@
+{
+  "name": "expert-code-flow-cloudflare",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "wrangler deploy",
+    "cf:status": "wrangler containers list",
+    "cf:images": "wrangler containers images list",
+    "cf:logs": "wrangler tail"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "latest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "latest",
+    "wrangler": "latest"
+  }
+}

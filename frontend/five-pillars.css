@@ -1,0 +1,6 @@
+.dimension-tabs.five-pillars{grid-template-columns:repeat(5,minmax(0,1fr))}
+.dimension-tabs.six-dimensions{grid-template-columns:repeat(6,minmax(0,1fr))}
+@media(max-width:1100px){.dimension-tabs.five-pillars{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1100px){.dimension-tabs.six-dimensions{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.dimension-tabs.five-pillars{grid-template-columns:1fr}}
+@media(max-width:700px){.dimension-tabs.six-dimensions{grid-template-columns:1fr}}

@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: expert-code-flow
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: EXPERT_CODE_FLOW_SPOON
+        value: selectable

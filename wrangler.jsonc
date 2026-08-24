@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "expert-code-flow",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-23",
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "codeflow.eazevedo.com.br",
+      "custom_domain": true
+    }
+  ],
+  "containers": [
+    {
+      "class_name": "ExpertCodeFlowContainer",
+      "image": "./Dockerfile",
+      "max_instances": 1,
+      "instance_type": "standard-1"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "EXPERT_CODE_FLOW",
+        "class_name": "ExpertCodeFlowContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["ExpertCodeFlowContainer"]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
