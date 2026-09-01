@@ -1,4 +1,5 @@
 import re
+import os
 from pathlib import Path
 from .models import JavaType, MethodInfo
 
@@ -7,6 +8,7 @@ TYPE_RE = re.compile(r"\b(public\s+)?(class|interface|record)\s+(\w+)(?:\s*\([^{
 METHOD_RE = re.compile(r"(?m)^\s*(?:public|protected|private)\s+(?:static\s+)?(?:final\s+)?(?P<return>[\w<>?,.\[\]]+)\s+(?P<name>\w+)\s*\((?P<params>[^;{}]*)\)\s*(?:throws\s+(?P<throws>[^\{]+))?\{")
 FIELD_RE = re.compile(r"(?m)^\s*private\s+(?:final\s+)?([\w<>?,.]+)\s+(\w+)\s*;")
 MAPPING_RE = re.compile(r"@(Get|Post|Put|Delete|Patch|Request)Mapping(?:\(([^)]*)\))?")
+IGNORED_DIRS = {".git", ".gradle", ".idea", ".mvn", ".settings", ".vscode", "build", "dist", "node_modules", "out", "target"}
 
 
 def _brace_end(text: str, start: int) -> int:
@@ -104,3 +106,5 @@ def endpoints(types: dict[str, JavaType]) -> list[dict]:
                 result.append({"id": f"{owner.name}:{method.name}:{method.line}", "http_method": method.http_method,
                                "path": path or "/", "controller": owner.name, "method": method.name, "line": method.line})
     return sorted(result, key=lambda x: (x["path"], x["http_method"]))
+
+

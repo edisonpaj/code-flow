@@ -35,10 +35,8 @@ project_upload_root = ROOT / ".uploads" / "projects"
 
 # Autenticação simples para o MVP. A senha permanece somente no backend.
 AUTH_USERNAME = "admin"
-AUTH_PASSWORD = "codeflow"
+AUTH_PASSWORD = ""
 AUTH_COOKIE = "codeflow_session"
-AUTH_SESSION_SECONDS = 60 * 60
-AUTH_IDLE_SECONDS = 5 * 60
 PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/health"}
 auth_sessions: dict[str, dict[str, float]] = {}
 uploaded_projects_by_session: dict[str, dict] = {}
@@ -49,17 +47,7 @@ MAX_CHUNK_BYTES = 10 * 1024 * 1024
 
 def _is_authenticated(request: Request) -> bool:
     token = request.cookies.get(AUTH_COOKIE, "")
-    session = auth_sessions.get(token)
-    if not token or not session:
-        return False
-    now = time.time()
-    if now - session["created_at"] > AUTH_SESSION_SECONDS or now - session["last_seen"] > AUTH_IDLE_SECONDS:
-        auth_sessions.pop(token, None)
-        uploaded_projects_by_session.pop(token, None)
-        return False
-    session["last_seen"] = now
-    return True
-
+    return bool(token and token in auth_sessions)
 
 @app.middleware("http")
 async def require_authentication(request: Request, call_next):
@@ -135,8 +123,7 @@ def login(request: LoginRequest, http_request: Request):
     if not (valid_user and valid_password):
         raise HTTPException(401, "Usuário ou senha inválidos")
     token = secrets.token_urlsafe(32)
-    now = time.time()
-    auth_sessions[token] = {"created_at": now, "last_seen": now}
+    auth_sessions[token] = {"authenticated": True}
     response = JSONResponse({"authenticated": True, "username": AUTH_USERNAME})
     is_https = (
         http_request.url.scheme == "https"
@@ -145,7 +132,6 @@ def login(request: LoginRequest, http_request: Request):
     response.set_cookie(
         AUTH_COOKIE,
         token,
-        max_age=AUTH_SESSION_SECONDS,
         httponly=True,
         secure=is_https,
         samesite="lax",
@@ -287,7 +273,14 @@ def current_uploaded_project(request: Request):
 
 @app.get("/api/endpoints")
 def list_endpoints(project: str = Query(...)):
-    try: return {"project": project, "endpoints": endpoints(parse_project(Path(project).resolve()))}
+    try:
+        types = parse_project(Path(project).resolve())
+        return {
+            "project": project,
+            "endpoints": endpoints(types),
+            "architecture": detect_architecture(types),
+            "java_types": len(types),
+        }
     except OSError as exc: raise HTTPException(400, str(exc)) from exc
 
 
@@ -433,3 +426,5 @@ def performance_page(): return FileResponse(FRONTEND / "performance.html")
 
 
 app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+
+

@@ -1,8 +1,9 @@
 from pathlib import Path
+import os
 import re
 
 
-IGNORED = {".git", ".idea", ".vscode", "target", "build", "node_modules"}
+IGNORED = {".git", ".gradle", ".idea", ".mvn", ".settings", ".vscode", "build", "dist", "node_modules", "out", "target"}
 
 
 def is_spring_project(path: Path) -> bool:
@@ -20,19 +21,16 @@ def discover_projects(root_value: str) -> list[dict]:
     root = Path(root_value).expanduser().resolve()
     if not root.is_dir():
         raise ValueError("Diretório não encontrado")
-    candidates = [root]
-    candidates.extend(p for p in root.rglob("*") if p.is_dir() and not any(x in IGNORED for x in p.parts))
+    if is_spring_project(root):
+        return [{"name": root.name, "path": str(root)}]
     found = []
-    for path in candidates:
-        if is_spring_project(path):
+    for current, dirnames, _ in os.walk(root, topdown=True, followlinks=False):
+        dirnames[:] = [name for name in dirnames if name not in IGNORED]
+        path = Path(current)
+        if path != root and is_spring_project(path):
             found.append({"name": path.name, "path": str(path)})
-    # Não listar módulos internos quando um pai Spring já foi encontrado.
-    selected = []
-    for item in sorted(found, key=lambda x: (len(Path(x["path"]).parts), x["name"])):
-        path = Path(item["path"])
-        if not any(path.is_relative_to(Path(existing["path"])) for existing in selected):
-            selected.append(item)
-    return selected
+            dirnames[:] = []
+    return sorted(found, key=lambda item: (len(Path(item["path"]).parts), item["name"]))
 
 
 def _resolved_value(value: str, fallback: str) -> str:
@@ -66,3 +64,5 @@ def swagger_info(project_value: str) -> dict:
     return {"detected": detected, "port": int(port) if port.isdigit() else port, "context_path": context_path,
             "base_url": base_url, "swagger_url": base_url + swagger_path,
             "openapi_url": base_url + "/v3/api-docs", "source": "configuração Spring Boot"}
+
+
