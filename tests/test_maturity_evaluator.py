@@ -47,6 +47,20 @@ class MaturityEvaluatorTest(unittest.TestCase):
             {"subdimension":"B","processing_status":"EVALUATED","result":"NON_ADHERENT","score":0.0},
         ])
         self.assertEqual(score,50)
+
+    def test_operability_does_not_fail_on_multistage_dockerfile_rule(self):
+        Path(self.root, "Dockerfile").write_text(
+            "FROM maven:3.9-eclipse-temurin-21 AS build\n"
+            "COPY . .\n"
+            "FROM eclipse-temurin:21-jre\n"
+            "USER 1001\n",
+            encoding="utf-8",
+        )
+        result = evaluate_dimension(self.root, "OPERABILITY")
+        criteria = {item["id"]: item for item in result["criteria"]}
+        self.assertEqual(criteria["OPS-CONT-003"]["result"], "ADHERENT")
+        self.assertEqual(result["dimension_id"], "OPERABILITY")
+
     def test_consolidation_uses_processing_result_model(self):
         summary=consolidate([evaluate_dimension(self.root,"SECURITY"),evaluate_dimension(self.root,"CODE_QUALITY")])
         self.assertIn("foundation",summary);self.assertLess(summary["coverage_percent"],100)

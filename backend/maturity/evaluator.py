@@ -290,7 +290,7 @@ def _evaluate(rule, ctx):
     if rule["id"] == "OPS-CONT-002":
         fixed=ctx.find([r"(?m)^FROM\s+[^\s:]+:(?!latest\b)[^\s]+"],["docker"]);latest=ctx.find([r"(?m)^FROM\s+[^\s:]+(?::latest)?\s*$"],["docker"])
         return _result(rule,"PASS" if fixed and not latest else "FAIL","Imagem possui tag fixa" if fixed and not latest else "Imagem ausente, sem tag ou latest",ctx,fixed or latest,["docker"])
-    if rule["id"] == "OPS-CONT-003": return _positive(rule,ctx,[r"(?im)^FROM\s+.+\s+AS\s+|(?is)^FROM\s+.+\n[\s\S]*^FROM\s+"],["docker"])
+    if rule["id"] == "OPS-CONT-003": return _positive(rule,ctx,[r"(?m)^FROM\s+.+\s+AS\s+|^FROM\s+[\s\S]*^FROM\s+"],["docker"])
     if rule["id"] == "OPS-CONT-004":
         found=ctx.find([r"(?m)^USER\s+(?!root\b)\S+",r"runAsNonRoot\s*:\s*true"],None)
         return _result(rule,"PASS" if found else "FAIL","Execução non-root configurada" if found else "USER/securityContext non-root não encontrado",ctx,found)
@@ -308,7 +308,7 @@ def _evaluate(rule, ctx):
     if rid == "IAC-DOCKER-001":
         version=ctx.find([r"(?m)^FROM\s+[^\s:]+:[^\s]+"],["docker"]);nonroot=ctx.find([r"(?m)^USER\s+(?!root\b)\S+"],["docker"])
         return _result(rule,"PASS" if version and nonroot else "PARTIAL" if version or nonroot else "FAIL","Imagem versionada e usuário non-root" if version and nonroot else "Dockerfile parcialmente seguro",ctx,version or nonroot,["docker"],[x for x,v in (("imagem versionada",version),("USER non-root",nonroot)) if not v])
-    if rid == "IAC-MULTI-001": return _positive(rule,ctx,[r"(?im)^FROM\s+.+\s+AS\s+|(?is)^FROM\s+.+\n[\s\S]*^FROM\s+"],["docker"])
+    if rid == "IAC-MULTI-001": return _positive(rule,ctx,[r"(?m)^FROM\s+.+\s+AS\s+|^FROM\s+[\s\S]*^FROM\s+"],["docker"])
     if rid == "IAC-WORKLOAD-001": return _positive(rule,ctx,[r"(?m)^\s*kind:\s*(Deployment|DeploymentConfig)\b"],["manifests"])
     if rid in {"IAC-PROBE-001","IAC-RESOURCE-001","IAC-NET-001"}:
         pairs={"IAC-PROBE-001":([r"readinessProbe:"],[r"livenessProbe:"]),"IAC-RESOURCE-001":([r"(?s)requests:.*?(cpu|memory):"],[r"(?s)limits:.*?(cpu|memory):"]),"IAC-NET-001":([r"kind:\s*Service"],[r"kind:\s*(ConfigMap|Secret)"])}
