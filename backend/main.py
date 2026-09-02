@@ -1,10 +1,16 @@
 from pathlib import Path
+import asyncio
 import hashlib
 import hmac
+import json
+import logging
 import secrets
 import shutil
+import subprocess
+import sys
 import time
 import uuid
+from collections import deque
 from urllib.parse import unquote
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -43,11 +49,88 @@ uploaded_projects_by_session: dict[str, dict] = {}
 chunk_uploads: dict[str, dict] = {}
 chunk_upload_root = ROOT / ".uploads" / "chunks"
 MAX_CHUNK_BYTES = 10 * 1024 * 1024
+ENDPOINT_ANALYSIS_TIMEOUT_SECONDS = 120
+SWAGGER_ENABLED = False
+active_endpoint_scans: dict[str, asyncio.subprocess.Process] = {}
+cancelled_endpoint_scans: set[str] = set()
+processing_events = deque(maxlen=80)
+api_events = deque(maxlen=120)
+last_endpoint_processing: dict | None = None
+
+log_root = ROOT / "logs"
+log_root.mkdir(parents=True, exist_ok=True)
+api_logger = logging.getLogger("expert_code_flow.api")
+if not api_logger.handlers:
+    api_logger.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    file_handler = logging.FileHandler(log_root / "api.log", encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    api_logger.addHandler(file_handler)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    api_logger.addHandler(stream_handler)
+api_logger.propagate = False
 
 
 def _is_authenticated(request: Request) -> bool:
     token = request.cookies.get(AUTH_COOKIE, "")
     return bool(token and token in auth_sessions)
+
+
+def _utc_now_iso() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _remember_api_event(event: dict) -> None:
+    api_events.appendleft({"timestamp": _utc_now_iso(), **event})
+
+
+def _remember_processing_event(event: dict) -> None:
+    processing_events.appendleft({"timestamp": _utc_now_iso(), **event})
+
+
+@app.middleware("http")
+async def log_api_requests(request: Request, call_next):
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+    started = time.perf_counter()
+    api_logger.info(
+        "api.start id=%s method=%s path=%s query=%s client=%s",
+        request_id, request.method, request.url.path, request.url.query or "-",
+        request.client.host if request.client else "-",
+    )
+    try:
+        response = await call_next(request)
+    except Exception:
+        api_logger.exception(
+            "api.error id=%s method=%s path=%s elapsed_ms=%.0f",
+            request_id, request.method, request.url.path, (time.perf_counter() - started) * 1000,
+        )
+        _remember_api_event({
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status": 500,
+            "elapsed_ms": round((time.perf_counter() - started) * 1000),
+            "error": "Erro interno na API",
+        })
+        raise
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Response-Time-Ms"] = f"{elapsed_ms:.0f}"
+    api_logger.info(
+        "api.end id=%s method=%s path=%s status=%s elapsed_ms=%.0f",
+        request_id, request.method, request.url.path, response.status_code, elapsed_ms,
+    )
+    _remember_api_event({
+        "request_id": request_id,
+        "method": request.method,
+        "path": request.url.path,
+        "status": response.status_code,
+        "elapsed_ms": round(elapsed_ms),
+    })
+    return response
 
 @app.middleware("http")
 async def require_authentication(request: Request, call_next):
@@ -153,6 +236,31 @@ def logout(request: Request):
 
 @app.get("/api/health")
 def health(): return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/api/status")
+def system_status():
+    spoon = engine_status()
+    recent_errors = [event for event in api_events if int(event.get("status", 0)) >= 400]
+    active_uploads = len(chunk_uploads)
+    components = [
+        {"id": "api", "name": "API FastAPI", "status": "ok", "detail": "Respondendo em memoria", "metric": f"{len(api_events)} req. recentes"},
+        {"id": "auth", "name": "Sessoes", "status": "ok", "detail": "Autenticacao local ativa", "metric": f"{len(auth_sessions)} sessao(oes)"},
+        {"id": "endpoint-worker", "name": "Worker de endpoints", "status": "busy" if active_endpoint_scans else "ok", "detail": "Processamento isolado por subprocesso", "metric": f"{len(active_endpoint_scans)} ativo(s)"},
+        {"id": "uploads", "name": "Upload em blocos", "status": "busy" if active_uploads else "ok", "detail": "Estado temporario somente em memoria", "metric": f"{active_uploads} upload(s) ativo(s)"},
+        {"id": "spoon", "name": "Spoon + SootUp", "status": "ok" if spoon.get("available") else "warning", "detail": spoon.get("detail") or spoon.get("label") or "Motor estrutural", "metric": "disponivel" if spoon.get("available") else "indisponivel"},
+        {"id": "errors", "name": "Erros recentes", "status": "warning" if recent_errors else "ok", "detail": "Requisicoes HTTP com falha no buffer atual", "metric": str(len(recent_errors))},
+    ]
+    return {
+        "generated_at": _utc_now_iso(),
+        "version": app.version,
+        "storage": "memory-only",
+        "components": components,
+        "active_endpoint_scans": list(active_endpoint_scans.keys()),
+        "last_processing": last_endpoint_processing,
+        "processing_events": list(processing_events)[:30],
+        "api_events": list(api_events)[:40],
+    }
 
 
 @app.get("/api/analysis/engines")
@@ -271,17 +379,106 @@ def current_uploaded_project(request: Request):
     return {"available": True, **context}
 
 
-@app.get("/api/endpoints")
-def list_endpoints(project: str = Query(...)):
+async def _scan_endpoints_in_worker(project: Path, analysis_id: str) -> dict:
+    global last_endpoint_processing
+    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    started_at = _utc_now_iso()
+    processing_record = {
+        "analysis_id": analysis_id,
+        "type": "endpoint-scan",
+        "project": str(project),
+        "status": "running",
+        "started_at": started_at,
+        "finished_at": None,
+        "duration_ms": None,
+        "pid": None,
+        "endpoints": None,
+        "worker_log": "",
+        "error": "",
+    }
+    last_endpoint_processing = processing_record
+    _remember_processing_event({"analysis_id": analysis_id, "level": "info", "message": "Iniciando varredura de endpoints", "project": str(project)})
+    started_perf = time.perf_counter()
+    process = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "backend.endpoint_worker", str(project),
+        cwd=str(ROOT),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        creationflags=creationflags,
+    )
+    processing_record["pid"] = process.pid
+    active_endpoint_scans[analysis_id] = process
+    api_logger.info("endpoint.scan.start id=%s pid=%s project=%s timeout_s=%s", analysis_id, process.pid, project, ENDPOINT_ANALYSIS_TIMEOUT_SECONDS)
     try:
-        types = parse_project(Path(project).resolve())
-        return {
-            "project": project,
-            "endpoints": endpoints(types),
-            "architecture": detect_architecture(types),
-            "java_types": len(types),
-        }
-    except OSError as exc: raise HTTPException(400, str(exc)) from exc
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=ENDPOINT_ANALYSIS_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError as exc:
+        process.kill()
+        await process.communicate()
+        api_logger.error("endpoint.scan.timeout id=%s pid=%s project=%s", analysis_id, process.pid, project)
+        processing_record.update({"status": "timeout", "finished_at": _utc_now_iso(), "duration_ms": round((time.perf_counter() - started_perf) * 1000), "error": f"Timeout apos {ENDPOINT_ANALYSIS_TIMEOUT_SECONDS} segundos"})
+        _remember_processing_event({"analysis_id": analysis_id, "level": "error", "message": processing_record["error"], "project": str(project)})
+        raise HTTPException(504, f"A análise excedeu {ENDPOINT_ANALYSIS_TIMEOUT_SECONDS} segundos e foi encerrada. Consulte logs/api.log.") from exc
+    except asyncio.CancelledError:
+        if process.returncode is None:
+            process.kill()
+            await process.communicate()
+        api_logger.warning("endpoint.scan.disconnected id=%s pid=%s project=%s", analysis_id, process.pid, project)
+        processing_record.update({"status": "cancelled", "finished_at": _utc_now_iso(), "duration_ms": round((time.perf_counter() - started_perf) * 1000), "error": "Cliente desconectado durante a analise"})
+        _remember_processing_event({"analysis_id": analysis_id, "level": "warning", "message": processing_record["error"], "project": str(project)})
+        raise
+    finally:
+        if active_endpoint_scans.get(analysis_id) is process:
+            active_endpoint_scans.pop(analysis_id, None)
+    worker_log = stderr.decode("utf-8", errors="replace").strip()
+    if worker_log:
+        api_logger.info("endpoint.scan.worker id=%s %s", analysis_id, worker_log.replace("\n", " | "))
+        processing_record["worker_log"] = worker_log
+        _remember_processing_event({"analysis_id": analysis_id, "level": "info", "message": worker_log, "project": str(project)})
+    if analysis_id in cancelled_endpoint_scans:
+        cancelled_endpoint_scans.discard(analysis_id)
+        api_logger.warning("endpoint.scan.cancel-confirmed id=%s pid=%s", analysis_id, process.pid)
+        processing_record.update({"status": "cancelled", "finished_at": _utc_now_iso(), "duration_ms": round((time.perf_counter() - started_perf) * 1000), "error": "Analise cancelada pelo usuario"})
+        _remember_processing_event({"analysis_id": analysis_id, "level": "warning", "message": processing_record["error"], "project": str(project)})
+        raise HTTPException(409, "Análise cancelada pelo usuário")
+    try:
+        payload = json.loads(stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        api_logger.error("endpoint.scan.invalid-output id=%s stdout=%r", analysis_id, stdout[-1000:])
+        processing_record.update({"status": "error", "finished_at": _utc_now_iso(), "duration_ms": round((time.perf_counter() - started_perf) * 1000), "error": "O worker retornou uma resposta invalida", "worker_log": worker_log})
+        _remember_processing_event({"analysis_id": analysis_id, "level": "error", "message": processing_record["error"], "project": str(project)})
+        raise HTTPException(500, "O analisador retornou uma resposta inválida. Consulte logs/api.log.") from exc
+    if process.returncode != 0:
+        processing_record.update({"status": "error", "finished_at": _utc_now_iso(), "duration_ms": round((time.perf_counter() - started_perf) * 1000), "error": payload.get("error") or "Falha ao analisar os endpoints", "worker_log": worker_log})
+        _remember_processing_event({"analysis_id": analysis_id, "level": "error", "message": processing_record["error"], "project": str(project)})
+        raise HTTPException(400, payload.get("error") or "Falha ao analisar os endpoints")
+    api_logger.info("endpoint.scan.end id=%s pid=%s project=%s endpoints=%s", analysis_id, process.pid, project, len(payload.get("endpoints", [])))
+    processing_record.update({"status": "ok", "finished_at": _utc_now_iso(), "duration_ms": round((time.perf_counter() - started_perf) * 1000), "endpoints": len(payload.get("endpoints", []))})
+    _remember_processing_event({"analysis_id": analysis_id, "level": "info", "message": f"Varredura concluida com {processing_record['endpoints']} endpoint(s)", "project": str(project)})
+    return payload
+
+
+@app.get("/api/endpoints")
+async def list_endpoints(project: str = Query(...), analysis_id: str | None = Query(None)):
+    resolved = Path(project).resolve()
+    if not resolved.is_dir():
+        raise HTTPException(400, "Diretório do microsserviço não encontrado")
+    operation_id = analysis_id or uuid.uuid4().hex
+    return await _scan_endpoints_in_worker(resolved, operation_id)
+
+
+
+@app.post("/api/analysis/cancel")
+async def cancel_analysis(analysis_id: str = Query(...)):
+    process = active_endpoint_scans.get(analysis_id)
+    if not process or process.returncode is not None:
+        return {"analysis_id": analysis_id, "cancelled": False, "detail": "Análise não está ativa"}
+    process.kill()
+    await process.wait()
+    cancelled_endpoint_scans.add(analysis_id)
+    active_endpoint_scans.pop(analysis_id, None)
+    api_logger.warning("endpoint.scan.cancelled id=%s pid=%s", analysis_id, process.pid)
+    _remember_processing_event({"analysis_id": analysis_id, "level": "warning", "message": "Cancelamento solicitado pelo usuario"})
+    return {"analysis_id": analysis_id, "cancelled": True}
 
 
 @app.get("/api/project-profile")
@@ -294,6 +491,8 @@ def project_profile(project: str = Query(...)):
 
 @app.get("/api/swagger-info")
 def get_swagger_info(project: str = Query(...)):
+    if not SWAGGER_ENABLED:
+        raise HTTPException(503, "Swagger temporariamente desativado")
     try: return swagger_info(project)
     except (ValueError, OSError) as exc: raise HTTPException(400, str(exc)) from exc
 
@@ -423,6 +622,10 @@ def capacity_assessment_page(): return FileResponse(FRONTEND / "avaliacao-capaci
 
 @app.get("/performance")
 def performance_page(): return FileResponse(FRONTEND / "performance.html")
+
+
+@app.get("/status")
+def status_page(): return FileResponse(FRONTEND / "status.html")
 
 
 app.mount("/static", StaticFiles(directory=FRONTEND), name="static")

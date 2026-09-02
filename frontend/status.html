@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Status | EXPERT CODE FLOW</title><link rel="stylesheet" href="/static/styles.css"><link rel="stylesheet" href="/static/layout.css"><link rel="stylesheet" href="/static/status.css"></head>
+<body><aside class="sidebar" aria-label="Navegação principal">
+  <a class="sidebar-brand" href="/"><span>ECF</span><strong>EXPERT<br>CODE FLOW</strong></a>
+  <nav>
+    <a class="nav-item" href="/"><span class="nav-icon">⌘</span><span><b>Code Flow</b><small>Sistema principal</small></span></a>
+    <a class="nav-item" href="/fluxos"><span class="nav-icon">⇄</span><span><b>Fluxos</b><small>Modelos avaliados</small></span></a>
+    <a class="nav-item" href="/camada-semantica"><span class="nav-icon">◇</span><span><b>Camada Semântica</b><small>Contexto funcional</small></span></a>
+    <a class="nav-item" href="/dimensoes-analise"><span class="nav-icon">☷</span><span><b>Dimensões de Análise</b><small>Critérios de maturidade</small></span></a>
+    <a class="nav-item" href="/avaliacao-maturidade"><span class="nav-icon">◎</span><span><b>Maturidade</b><small>Último processamento</small></span></a>
+    <a class="nav-item" href="/avaliacao-capacity"><span class="nav-icon">◫</span><span><b>Capacity</b><small>Capacidade estimada</small></span></a>
+    <a class="nav-item" href="/performance"><span class="nav-icon">↗</span><span><b>Performance</b><small>Regras de desempenho</small></span></a>
+    <a class="nav-item active" href="/status"><span class="nav-icon">●</span><span><b>Status</b><small>Saúde e logs</small></span></a>
+  </nav>
+  <footer><span class="status-dot"></span> Monitor local <b>mem</b></footer>
+</aside><main class="status-page">
+  <header><span class="eyebrow">Operação local</span><h1>STATUS</h1><p>Saúde dos componentes, últimas requisições e rastros do processamento atual em memória.</p></header>
+  <section class="status-toolbar"><div><strong id="status-summary">Carregando status...</strong><small id="status-generated">Aguardando API</small></div><button id="refresh-status" type="button">Atualizar</button></section>
+  <section class="status-grid" id="component-grid" aria-live="polite"></section>
+  <section class="status-columns">
+    <article class="panel status-panel"><div class="section-head"><div><span class="eyebrow">Último processamento</span><h2>Endpoint Scan</h2></div><span id="last-processing-badge"></span></div><div id="last-processing" class="empty-state">Nenhum processamento registrado desde que a API iniciou.</div></article>
+    <article class="panel status-panel"><div class="section-head"><div><span class="eyebrow">Eventos em memória</span><h2>Logs do processamento</h2></div></div><div id="processing-events" class="event-list"></div></article>
+  </section>
+  <section class="panel status-panel"><div class="section-head"><div><span class="eyebrow">API</span><h2>Últimas requisições</h2></div></div><div id="api-events" class="event-table"></div></section>
+</main><script src="/static/session-timeout.js"></script><script src="/static/status.js"></script></body></html>

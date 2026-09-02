@@ -18,9 +18,12 @@ def is_spring_project(path: Path) -> bool:
 
 
 def discover_projects(root_value: str) -> list[dict]:
-    root = Path(root_value).expanduser().resolve()
+    normalized = root_value.strip()
+    if os.name == "nt" and re.fullmatch(r"[A-Za-z]:", normalized):
+        normalized += "\\"
+    root = Path(normalized).expanduser().resolve()
     if not root.is_dir():
-        raise ValueError("Diretório não encontrado")
+        raise ValueError(f"Diretório não encontrado: {root}")
     if is_spring_project(root):
         return [{"name": root.name, "path": str(root)}]
     found = []
